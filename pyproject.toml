@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "apple-smi"
+version = "0.1.0"
+description = "nvidia-smi equivalent for macOS Apple Silicon – Monitor Metal GPU usage, power, and temperature"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+authors = [
+    {name = "yeahdongcn"},
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Intended Audience :: System Administrators",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: MacOS",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: System :: Hardware",
+    "Topic :: System :: Monitoring",
+    "Topic :: Utilities",
+]
+keywords = ["gpu", "apple-silicon", "metal", "monitoring", "nvidia-smi", "macos"]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0"]
+
+[project.scripts]
+apple-smi = "apple_smi.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/yeahdongcn/apple-smi"
+Repository = "https://github.com/yeahdongcn/apple-smi"
+Issues = "https://github.com/yeahdongcn/apple-smi/issues"
+
+[tool.setuptools.packages.find]
+include = ["apple_smi*"]
