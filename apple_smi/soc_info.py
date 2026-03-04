@@ -101,11 +101,17 @@ def get_soc_info() -> SocInfo:
     if match_cores:
         info.gpu_cores = int(match_cores.group(1))
 
-    # Guess Metal version based on chip family
-    if "M4" in info.chip_name:
-        info.metal_family = "4"
+    # Dynamic Metal version detection (Fast with -detailLevel mini)
+    metal_data = _run_cmd(["system_profiler", "SPDisplaysDataType", "-detailLevel", "mini"])
+    match_metal = re.search(r"Metal Support:\s*Metal\s*(\d+)", metal_data)
+    if match_metal:
+        info.metal_family = match_metal.group(1)
     else:
-        info.metal_family = "3"  # M1, M2, M3 all support Metal 3 on modern macOS
+        # Fallback guess based on chip family
+        if any(x in info.chip_name for x in ["M4", "M5"]):
+            info.metal_family = "4"
+        else:
+            info.metal_family = "3"  # Default for original M1/M2/M3
 
     # ── TDP estimation ────────────────────────────────────────────────────
     info.tdp_w = _TDP_TABLE.get(info.chip_name, 0.0)

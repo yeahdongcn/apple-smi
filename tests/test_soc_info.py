@@ -26,6 +26,10 @@ class TestSocInfoParsing:
             if "gpu-core-count" in cmd_str:
                 return '"gpu-core-count" = 14'
             return ""
+        elif "system_profiler" in cmd_str:
+            if "SPDisplaysDataType" in cmd_str:
+                return "      Metal Support: Metal 3"
+            return ""
         return ""
 
     @patch("apple_smi.soc_info.get_gpu_freq_table")
