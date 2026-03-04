@@ -80,8 +80,12 @@ class PowermetricsSampler:
         # Memory (always available without sudo)
         m.memory = get_memory_info()
 
-        # Temperature not available from powermetrics gpu sampler
-        # Could add --samplers smc but it makes the call slower
-        m.gpu_temp_c = 0.0
+        # Try to get temperature via IOHIDSensors (works without sudo)
+        try:
+            from .sensors import IOHIDSensors
+            hid = IOHIDSensors()
+            m.gpu_temp_c = hid.get_gpu_temp()
+        except Exception:
+            m.gpu_temp_c = 0.0
 
         return m

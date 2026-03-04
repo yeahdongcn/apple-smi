@@ -117,23 +117,44 @@ class IOHIDSensors:
         return items
 
     def get_gpu_temp(self) -> float:
-        """Get average GPU temperature in Celsius."""
+        """Get average GPU temperature in Celsius.
+        
+        Falls back to SOC sensors if specific GPU sensors are missing or reporting low.
+        """
         temps = self.get_temperatures()
-        gpu_temps = [t for name, t in temps if "GPU" in name and t > 0]
-        if not gpu_temps:
-            return 0.0
-        return sum(gpu_temps) / len(gpu_temps)
+        
+        # Primary: sensors with "GPU" in name
+        gpu_temps = [t for name, t in temps if "GPU" in name.upper() and t > 0]
+        
+        # Secondary: sensors with "SOC" in name (often better die temps)
+        soc_temps = [t for name, t in temps if "SOC" in name.upper() and t > 0]
+        
+        # Use GPU sensors if they seem realistic (> 1), otherwise SOC
+        if gpu_temps and max(gpu_temps) > 5.0:
+            return sum(gpu_temps) / len(gpu_temps)
+        if soc_temps:
+            return sum(soc_temps) / len(soc_temps)
+            
+        return sum(gpu_temps) / len(gpu_temps) if gpu_temps else 0.0
 
     def get_cpu_temp(self) -> float:
         """Get average CPU temperature in Celsius."""
         temps = self.get_temperatures()
-        cpu_temps = [
-            t
-            for name, t in temps
-            if ("pACC" in name or "eACC" in name) and t > 0
-        ]
+        cpu_patterns = ["PACC", "EACC", "CPU", "CORE", "CLUSTER"]
+        cpu_temps = []
+        
+        for name, t in temps:
+            name_u = name.upper()
+            if any(p in name_u for p in cpu_patterns) and t > 0:
+                cpu_temps.append(t)
+                
         if not cpu_temps:
+            # Fallback to SOC
+            soc_temps = [t for name, t in temps if "SOC" in name.upper() and t > 0]
+            if soc_temps:
+                return sum(soc_temps) / len(soc_temps)
             return 0.0
+            
         return sum(cpu_temps) / len(cpu_temps)
 
     def __del__(self):
@@ -313,7 +334,7 @@ class SMC:
 _FLOAT_TYPE = _fourcc("flt ")
 
 # Known SMC temperature key patterns (avoids enumerating all keys which is slow)
-_CPU_TEMP_KEYS = [f"Tp{i:02d}" for i in range(15)] + [f"Te{i:02d}" for i in range(15)]
+_CPU_TEMP_KEYS = [f"Tp{i:02d}" for i in range(15)] + [f"Te{i:02d}" for i in range(15)] + [f"TC{i:x}" for i in range(16)]
 _GPU_TEMP_KEYS = [f"Tg{i:02d}" for i in range(10)] + [
     f"Tg{c}{d}" for c in "0123" for d in "abcdef0123456789"
 ]

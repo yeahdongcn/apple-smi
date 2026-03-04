@@ -28,14 +28,15 @@ Wed Mar 04 10:15:39 2026
 
 ## ✨ Features
 
-- 🚫 **No sudo required** – Uses private macOS APIs (IOReport, IOHIDSensors, SMC) for sudoless operation
-- ⚡ **GPU utilization** – Real-time GPU usage percentage and frequency
-- 🔋 **Power monitoring** – GPU, CPU, and ANE power consumption in Watts
-- 🌡️ **Temperature** – GPU and CPU temperature readings
-- 💾 **Memory usage** – Unified memory utilization
-- 📊 **nvidia-smi style output** – Familiar box-drawing table format
-- 🔄 **watch compatible** – Works perfectly with `watch -n 0.1 apple-smi`
-- 📦 **Zero dependencies** – Pure Python, no external packages required
+- 🚫 **No sudo required** – Uses private macOS APIs (`IOReport`, `IOHIDSensors`, `SMC`) for sudoless operation.
+- ⚡ **GPU Metrics** – Real-time GPU usage percentage, frequency, and Metal version.
+- 🔋 **Power Monitoring** – Displays SoC power consumption (Usage) against chip TDP (Cap).
+- 🌡️ **Temperature** – GPU temperature readings directly from system sensors.
+- 💾 **Memory Usage** – Detailed breakdown of unified memory utilization.
+- 📊 **nvidia-smi Style** – Familiar box-drawing table format that fits perfectly in your workflows.
+- 📋 **Process Listing** – Lists active GPU processes, categorized by Type (`C` for Compute, `G` for Graphics).
+- 🔄 **Watch Compatible** – Works perfectly with `watch -n 0.1 apple-smi`.
+- 📦 **Zero Dependencies** – Pure Python, utilizing `ctypes` to interface with macOS frameworks.
 
 ## 📥 Installation
 
@@ -45,27 +46,45 @@ pip install apple-smi
 
 ## 🚀 Usage
 
+### Command Line Options
+
 ```bash
 # Basic usage
 apple-smi
 
-# Continuous monitoring (using watch)
-watch -n 0.1 apple-smi
+# Set sampling interval (default: 1000ms)
+apple-smi --interval 500
 
-# JSON output
+# JSON output for integration with other tools
 apple-smi --json
+
+# Continuous monitoring
+watch -n 0.5 apple-smi
 ```
 
-### Environment Variables
+### Process Filtering
+
+By default, `apple-smi` only shows **Compute (C)** processes (e.g., Python, MLX, llama.cpp) to reduce noise. You can show all GPU-connected processes (including window compositors and browsers) using an environment variable.
+
+```bash
+APPLE_SMI_SHOW_ALL_PROCESSES=1 apple-smi
+```
+
+### Backends
+
+`apple-smi` automatically selects the best available backend:
+
+1. **IOKit (Default)**: Uses undocumented IOKit APIs for **sudoless** monitoring.
+2. **Powermetrics (Fallback)**: Uses the system `powermetrics` tool (requires `sudo` or root privileges).
 
 | Variable | Values | Description |
 |----------|--------|-------------|
-| `APPLE_SMI_BACKEND` | `iokit`, `powermetrics` | Force a specific backend. Default: auto-detect |
-| `APPLE_SMI_SHOW_ALL_PROCESSES` | `0`, `1` | Show all GPU processes (G+C). Default: `0` (Compute only) |
+| `APPLE_SMI_BACKEND` | `iokit`, `powermetrics` | Force a specific backend. Default: auto-detect. |
+| `APPLE_SMI_SHOW_ALL_PROCESSES` | `0`, `1` | Show all GPU processes (G+C). Default: `0`. |
 
 ## 🔧 Requirements
 
-- macOS on Apple Silicon (M1/M2/M3/M4)
+- macOS on Apple Silicon (M1, M2, M3, M4)
 - Python 3.10+
 
 ## 📝 License
