@@ -132,14 +132,18 @@ def format_table(metrics: Metrics, soc: SocInfo) -> str:
     lines.append("")
     lines.append("+" + "-" * W + "+")
     lines.append(f"|{' Processes:':<{W}s}|")
-    # Header row 1: left-aligned labels + right-aligned "GPU Memory"
-    left_hdr = " GPU     PID   Type   Process name"
-    right_hdr = "GPU Memory "
-    hdr_pad = W - len(left_hdr) - len(right_hdr)
-    lines.append(f"|{left_hdr}{' ' * hdr_pad}{right_hdr}|")
+    #                GPU(6) + PID(10) + Type(8) + Name(54) + Memory(11) = 89
+    h_gpu = " GPU".ljust(6)
+    h_pid = "PID".rjust(10)
+    h_type = "Type".center(8)
+    h_name = "Process name".ljust(54)
+    h_mem = "GPU Memory ".rjust(11)
+    
+    header = f"{h_gpu}{h_pid}{h_type}{h_name}{h_mem}"
+    lines.append(f"|{header}|")
+    
     # Header row 2: right-aligned "Usage"
-    right_hdr2 = "Usage "
-    lines.append(f"|{' ' * (W - len(right_hdr2))}{right_hdr2}|")
+    lines.append(f"|{'Usage ':>{W}s}|")
     lines.append("|" + "=" * W + "|")
     
     if not metrics.processes:
@@ -153,22 +157,18 @@ def format_table(metrics: Metrics, soc: SocInfo) -> str:
             lines.append(f"|{'No running processes found':^{W}s}|")
         else:
             for proc in display_procs:
-                pid_str = str(proc.pid).rjust(7)
-                ptype = proc.type.center(6)
+                gpu_idx = f"   0 ".ljust(6)
+                pid_str = str(proc.pid).rjust(10)
+                ptype = proc.type.center(8)
                 
                 name = proc.name
-                if len(name) > 55:
-                    name = name[:52] + ".."
+                if len(name) > 54:
+                    name = name[:51] + ".."
                 
                 mem = _format_mem(proc.memory_usage_bytes)
+                mem_str = f"{mem} ".rjust(11)
                 
-                # Build line: " GPU  PID   Type   Name...  Mem "
-                left = f" {0:>3d}  {pid_str}   {ptype}   {name}"
-                right = f"{mem} "
-                pad = W - len(left) - len(right)
-                if pad < 1:
-                    pad = 1
-                line = left + " " * pad + right
+                line = f"{gpu_idx}{pid_str}{ptype}{name:<54s}{mem_str}"
                 lines.append(f"|{line}|")
             
             if len(metrics.processes) > 15:

@@ -1,41 +1,41 @@
 # 🍎 apple-smi
 
-**nvidia-smi equivalent for macOS Apple Silicon** – Monitor Metal GPU usage, power consumption, and temperature from your terminal.
+**nvidia-smi equivalent for Apple Silicon** – High-performance, sudoless GPU monitoring with zero dependencies.
 
-```
+```text
 $ apple-smi
-Wed Mar 04 10:15:39 2026
+Wed Mar 04 14:52:00 2026
 +-----------------------------------------------------------------------------------------+
-| APPLE-SMI 0.1.0              macOS Version: 26.3 (25D125)              Metal Version: 4 |
+| APPLE-SMI 0.1.0              macOS Version: 26.3 (25D125)              Metal Version: 3 |
 +-----------------------------------------+------------------------+----------------------+
 | GPU  Name                               |                 Disp.A |                      |
 |      Temp                 Pwr:Usage/Cap |           Memory-Usage |             GPU-Util |
 |=========================================+========================+======================|
 |   0  Apple M1 (8-Core GPU)              |                     On |                      |
-|       30C                   11.4W / 20W |    13864MiB / 16384MiB |                   5% |
+|       30C                    2.4W / 20W |    13826MiB / 16384MiB |                  12% |
 +-----------------------------------------+------------------------+----------------------+
 
 +-----------------------------------------------------------------------------------------+
 | Processes:                                                                              |
-| GPU     PID   Type   Process name                                            GPU Memory |
+| GPU           PID  Type   Process name                                       GPU Memory |
 |                                                                                   Usage |
 |=========================================================================================|
-|   0    72743     C      python3.11                                               530MiB |
-|   0    72807     C      python3.11                                               349MiB |
-|   0    72808     C      python3.11                                               349MiB |
+|   0         72743    C    python3.11                                             530MiB |
+|   0          1007    G    NotificationCenter                                     170MiB |
+|   0          3197    G    WeType                                                 216MiB |
 +-----------------------------------------------------------------------------------------+
 ```
 
 ## ✨ Features
 
 - 🚫 **No sudo required** – Uses private macOS APIs (`IOReport`, `IOHIDSensors`, `SMC`) for sudoless operation.
-- ⚡ **GPU Metrics** – Real-time GPU usage percentage, frequency, and Metal version.
+- ⚡ **Ultra-Fast & Lightweight** – Optimized startup (<50ms) using targeted `sysctl` and `ioreg` calls.
 - 🔋 **Power Monitoring** – Displays SoC power consumption (Usage) against chip TDP (Cap).
-- 🌡️ **Temperature** – GPU temperature readings directly from system sensors.
+- 🌡️ **Smart Thermals** – High-accuracy GPU/SOC temperature readings with sensor fallback logic.
+- 📋 **Robust Process Listing** – Lists active GPU processes with full name resolution (no truncation for paths with spaces).
+- 🔍 **C/G Classification** – Categorizes processes by Type (`C` for Compute, `G` for Graphics).
 - 💾 **Memory Usage** – Detailed breakdown of unified memory utilization.
-- 📊 **nvidia-smi Style** – Familiar box-drawing table format that fits perfectly in your workflows.
-- 📋 **Process Listing** – Lists active GPU processes, categorized by Type (`C` for Compute, `G` for Graphics).
-- 🔄 **Watch Compatible** – Works perfectly with `watch -n 0.1 apple-smi`.
+- 🔄 **Watch Compatible** – Default **100ms** sampling interval for smooth real-time monitoring.
 - 📦 **Zero Dependencies** – Pure Python, utilizing `ctypes` to interface with macOS frameworks.
 
 ## 📥 Installation
@@ -52,19 +52,19 @@ pip install apple-smi
 # Basic usage
 apple-smi
 
-# Set sampling interval (default: 1000ms)
-apple-smi --interval 500
+# Set sampling interval (default: 100ms)
+apple-smi --interval 250
 
 # JSON output for integration with other tools
 apple-smi --json
 
-# Continuous monitoring
-watch -n 0.5 apple-smi
+# Continuous monitoring (highly recommended)
+watch -n 0.1 apple-smi
 ```
 
 ### Process Filtering
 
-By default, `apple-smi` only shows **Compute (C)** processes (e.g., Python, MLX, llama.cpp) to reduce noise. You can show all GPU-connected processes (including window compositors and browsers) using an environment variable.
+By default, `apple-smi` only shows **Compute (C)** processes (e.g., Python, MLX, Torch, llama.cpp) to reduce system noise. You can show all GPU-connected processes (including window compositors and browsers) using an environment variable:
 
 ```bash
 APPLE_SMI_SHOW_ALL_PROCESSES=1 apple-smi

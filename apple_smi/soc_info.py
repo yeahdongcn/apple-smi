@@ -25,6 +25,10 @@ _TDP_TABLE: dict[str, float] = {
     "Apple M4 Pro": 40,
     "Apple M4 Max": 75,
     "Apple M4 Ultra": 150,
+    "Apple M5": 22,
+    "Apple M5 Pro": 40,
+    "Apple M5 Max": 75,
+    "Apple M5 Ultra": 150,
 }
 
 

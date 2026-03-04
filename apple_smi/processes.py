@@ -8,14 +8,14 @@ from dataclasses import dataclass
 # Known graphics/system processes (UI, compositors, renderers, etc.)
 _GRAPHICS_PATTERNS = {
     "WindowServer", "Dock", "Finder", "loginwindow", "ControlCenter",
-    "ControlStrip", "NotificationCent", "Spotlight", "TouchBarServer",
-    "SystemUIServer", "DockHelper", "AccessibilityUIS", "replayd",
-    "NeptuneOneWallpa", "CursorUIViewServ", "TextInputMenuAge",
-    "TextInputSwitche", "NowPlayingTouchU", "ThemeWidgetContr",
-    "AutoFillPanelSer", "avconferenced", "iconservicesagen",
-    "LocalAuthenticat", "runningboardd", "iPhone Mirroring",
-    "QuickLookUIServi", "DisplayLinkUserA", "BetterDisplay",
-    "Hidden Bar", "Input Source Pro",
+    "ControlStrip", "NotificationCenter", "Spotlight", "TouchBarServer",
+    "SystemUIServer", "DockHelper", "AccessibilityVisuals", "replayd",
+    "NeptuneOneWallpaper", "CursorUIViewService", "TextInputMenuAgent",
+    "TextInputSwitcher", "NowPlayingTouchUI", "ThemeWidgetContent",
+    "AutoFillPanelService", "avconferenced", "iconservicesagent",
+    "LocalAuthentication", "runningboardd", "iPhone Mirroring",
+    "QuickLookUIService", "DisplayLinkUserAgent", "BetterDisplay",
+    "Hidden Bar", "Input Source Pro", "ViewBridgeAuxiliary",
 }
 
 # Known compute process patterns (ML/AI frameworks, scientific computing, etc.)
@@ -38,35 +38,29 @@ class ProcessInfo:
     memory_usage_bytes: int = 0
 
 
-def _classify_process(name: str, comm: str) -> str:
-    """Classify a process as G (Graphics) or C (Compute).
-
-    Graphics processes are known system UI processes.
-    Compute processes are ML/AI/rendering apps.
-    Default is G for unrecognized processes.
-    """
-    # Check if it's a known graphics process
+def _classify_process(name: str, full_cmd: str) -> str:
+    """Classify a process as G (Graphics) or C (Compute)."""
+    # Check if it's a known graphics process (case-insensitive)
+    name_u = name.upper()
     for pattern in _GRAPHICS_PATTERNS:
-        if name.startswith(pattern) or pattern in name:
+        if name_u == pattern.upper() or pattern.upper() in name_u:
             return "G"
 
-    # Check if it's a known compute process (by name or full command)
-    check = (name + " " + comm).lower()
+    # Check if it's a known compute process
+    check = (name + " " + full_cmd).lower()
     for pattern in _COMPUTE_PATTERNS:
         if pattern.lower() in check:
             return "C"
 
-    # Default: Graphics (most GPU-using processes on macOS are graphical)
+    # Default for unidentified system processes from common paths
+    if "/System/Library/" in full_cmd or "/usr/libexec/" in full_cmd:
+        return "G"
+
     return "G"
 
 
 def get_gpu_processes(show_all: bool = False) -> list[ProcessInfo]:
-    """Get list of processes using the GPU by parsing ioreg.
-
-    Args:
-        show_all: If True, return all GPU processes (G + C).
-                  If False, return only Compute (C) processes.
-    """
+    """Get list of processes using the GPU."""
     try:
         # ioreg lists user clients of the accelerator
         result = subprocess.run(
@@ -79,26 +73,25 @@ def get_gpu_processes(show_all: bool = False) -> list[ProcessInfo]:
     except Exception:
         return []
 
-    # Regex to find "IOUserClientCreator" = "pid 636, WindowServer"
-    pattern = re.compile(r'"IOUserClientCreator"\s*=\s*"pid\s+(\d+),\s+(.*?)"')
-
-    pids_found = {}  # pid -> name
+    # Get PIDs of processes using the GPU
+    # Regex find: "IOUserClientCreator" = "pid 636, WindowServer"
+    pattern = re.compile(r'"IOUserClientCreator"\s*=\s*"pid\s+(\d+),')
+    pids = set()
     for line in output.splitlines():
         match = pattern.search(line)
         if match:
-            pid = int(match.group(1))
-            name = match.group(2).strip()
-            pids_found[pid] = name
+            pids.add(int(match.group(1)))
 
-    if not pids_found:
+    if not pids:
         return []
 
-    # Get additional info (memory, full command) via ps
+    # Get detailed info via ps (pid, rss, command)
+    # Using 'command' avoids the 16-character 'comm' limit and prevents splitting ambiguity.
     processes = []
     try:
-        pid_list = ",".join(map(str, pids_found.keys()))
+        pid_list = ",".join(map(str, pids))
         ps_result = subprocess.run(
-            ["ps", "-o", "pid,rss,comm", "-p", pid_list],
+            ["ps", "-o", "pid,rss,command", "-p", pid_list],
             capture_output=True,
             text=True,
         )
@@ -106,15 +99,35 @@ def get_gpu_processes(show_all: bool = False) -> list[ProcessInfo]:
         lines = ps_result.stdout.strip().splitlines()
         if len(lines) > 1:
             for line in lines[1:]:
+                # Split only for PID and RSS, everything else is the command string
                 parts = line.split(None, 2)
-                if len(parts) >= 2:
+                if len(parts) >= 3:
                     pid = int(parts[0])
                     rss_kb = int(parts[1])
-                    comm = parts[2] if len(parts) > 2 else ""
-                    mem_bytes = rss_kb * 1024
+                    full_cmd = parts[2].strip()
+                    
+                    # 1. Default name: first word of the command
+                    cmd_parts = full_cmd.split()
+                    raw_bin = cmd_parts[0]
+                    name = os.path.basename(raw_bin) if "/" in raw_bin else raw_bin
 
-                    name = pids_found.get(pid, "Unknown")
-                    proc_type = _classify_process(name, comm)
+                    # 2. Robust path matching: handle spaces in absolute paths (e.g. /Applications/My App/...)
+                    if full_cmd.startswith("/"):
+                        temp_path = ""
+                        for part in cmd_parts:
+                            temp_path = (temp_path + " " + part).strip()
+                            if os.path.isfile(temp_path):
+                                name = os.path.basename(temp_path)
+                                break
+
+                    # 3. Special case: Python scripts
+                    if name.lower().startswith("python") and len(cmd_parts) > 1:
+                        script = cmd_parts[1]
+                        if not script.startswith("-"):
+                            name = os.path.basename(script)
+                    
+                    mem_bytes = rss_kb * 1024
+                    proc_type = _classify_process(name, full_cmd)
 
                     processes.append(ProcessInfo(
                         pid=pid,
@@ -123,9 +136,16 @@ def get_gpu_processes(show_all: bool = False) -> list[ProcessInfo]:
                         memory_usage_bytes=mem_bytes,
                     ))
     except Exception:
-        for pid, name in pids_found.items():
-            proc_type = _classify_process(name, "")
-            processes.append(ProcessInfo(pid=pid, name=name, type=proc_type))
+        pass
+
+    # Filter by type unless show_all
+    if not show_all:
+        processes = [p for p in processes if p.type == "C"]
+
+    # Sort by memory usage descending
+    processes.sort(key=lambda x: x.memory_usage_bytes, reverse=True)
+
+    return processes
 
     # Filter by type unless show_all
     if not show_all:
