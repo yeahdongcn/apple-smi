@@ -1,9 +1,11 @@
 """Metrics sampler – combines IOReport, sensors, and memory into unified metrics."""
 
+import os
 from dataclasses import dataclass, field
 
 from .ioreport import IOReportSampler, compute_watts
 from .memory import MemoryInfo, get_memory_info
+from .processes import ProcessInfo, get_gpu_processes
 from .sensors import IOHIDSensors, SMC, get_smc_temperatures, get_system_power
 from .soc_info import SocInfo, get_soc_info
 
@@ -25,6 +27,7 @@ class Metrics:
     total_power_w: float = 0.0
     sys_power_w: float = 0.0
     memory: MemoryInfo = field(default_factory=MemoryInfo)
+    processes: list[ProcessInfo] = field(default_factory=list)
 
 
 def _zero_div(a: float, b: float) -> float:
@@ -158,5 +161,9 @@ class Sampler:
 
         # Memory
         m.memory = get_memory_info()
+
+        # Processes
+        show_all = os.environ.get("APPLE_SMI_SHOW_ALL_PROCESSES", "0") == "1"
+        m.processes = get_gpu_processes(show_all=show_all)
 
         return m

@@ -13,6 +13,16 @@ def _bytes_to_mib(b: int) -> int:
     return b // (1024 * 1024)
 
 
+def _format_mem(bytes_val: int) -> str:
+    """Format memory bytes for process listing."""
+    if bytes_val <= 0:
+        return "N/A"
+    mib = _bytes_to_mib(bytes_val)
+    if mib < 1:
+        return "<1MiB"
+    return f"{mib}MiB"
+
+
 
 def format_table(metrics: Metrics, soc: SocInfo) -> str:
     """Format metrics as an nvidia-smi style box-drawing table."""
@@ -100,7 +110,10 @@ def format_table(metrics: Metrics, soc: SocInfo) -> str:
 
     # Data row 2: temp  pwr  |  memory  |  gpu-util
     temp_str = f"{int(metrics.gpu_temp_c)}C" if metrics.gpu_temp_c > 0 else "N/A"
-    pwr_str = f"{metrics.gpu_power_w:.0f}W / {metrics.total_power_w:.0f}W"
+    # Usage = total SoC power (CPU+GPU+ANE), Cap = chip TDP
+    usage_pwr = f"{metrics.total_power_w:.1f}W"
+    cap_pwr = f"{soc.tdp_w:.0f}W" if soc.tdp_w > 0 else "N/A"
+    pwr_str = f"{usage_pwr} / {cap_pwr}"
     d2c1 = f"{'':>{TEMP_PAD}s}{temp_str:>{TEMP_W}s}{pwr_str:>{PWR_W}s} "
 
     mem_used = _bytes_to_mib(metrics.memory.ram_used)
@@ -119,10 +132,49 @@ def format_table(metrics: Metrics, soc: SocInfo) -> str:
     lines.append("")
     lines.append("+" + "-" * W + "+")
     lines.append(f"|{' Processes:':<{W}s}|")
-    lines.append(f"|{'  GPU   GI   CI              PID   Type   Process name                        GPU Memory ':<{W}s}|")
-    lines.append(f"|{'        ID   ID                                                               Usage      ':<{W}s}|")
+    # Header row 1: left-aligned labels + right-aligned "GPU Memory"
+    left_hdr = " GPU     PID   Type   Process name"
+    right_hdr = "GPU Memory "
+    hdr_pad = W - len(left_hdr) - len(right_hdr)
+    lines.append(f"|{left_hdr}{' ' * hdr_pad}{right_hdr}|")
+    # Header row 2: right-aligned "Usage"
+    right_hdr2 = "Usage "
+    lines.append(f"|{' ' * (W - len(right_hdr2))}{right_hdr2}|")
     lines.append("|" + "=" * W + "|")
-    lines.append(f"|{'No running processes found':^{W}s}|")
+    
+    if not metrics.processes:
+        lines.append(f"|{'No running processes found':^{W}s}|")
+    else:
+        # Sort and limit to top 15 with memory > 0
+        display_procs = [p for p in metrics.processes if p.memory_usage_bytes > 0]
+        display_procs = sorted(display_procs, key=lambda x: x.memory_usage_bytes, reverse=True)[:15]
+        
+        if not display_procs:
+            lines.append(f"|{'No running processes found':^{W}s}|")
+        else:
+            for proc in display_procs:
+                pid_str = str(proc.pid).rjust(7)
+                ptype = proc.type.center(6)
+                
+                name = proc.name
+                if len(name) > 55:
+                    name = name[:52] + ".."
+                
+                mem = _format_mem(proc.memory_usage_bytes)
+                
+                # Build line: " GPU  PID   Type   Name...  Mem "
+                left = f" {0:>3d}  {pid_str}   {ptype}   {name}"
+                right = f"{mem} "
+                pad = W - len(left) - len(right)
+                if pad < 1:
+                    pad = 1
+                line = left + " " * pad + right
+                lines.append(f"|{line}|")
+            
+            if len(metrics.processes) > 15:
+                footer = f"... and {len(metrics.processes) - 15} more processes ..."
+                lines.append(f"|{footer:^{W}s}|")
+
     lines.append("+" + "-" * W + "+")
 
     return "\n".join(lines)
@@ -166,5 +218,15 @@ def format_json(metrics: Metrics, soc: SocInfo) -> str:
             "metal_family": soc.metal_family,
             "os_version": soc.os_version,
         },
+        "processes": [
+            {
+                "pid": p.pid,
+                "name": p.name,
+                "type": p.type,
+                "memory_usage_bytes": p.memory_usage_bytes,
+                "memory_used_mib": _bytes_to_mib(p.memory_usage_bytes)
+            }
+            for p in metrics.processes
+        ]
     }
     return json.dumps(data, indent=2)

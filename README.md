@@ -61,6 +61,7 @@ apple-smi --json
 | Variable | Values | Description |
 |----------|--------|-------------|
 | `APPLE_SMI_BACKEND` | `iokit`, `powermetrics` | Force a specific backend. Default: auto-detect |
+| `APPLE_SMI_SHOW_ALL_PROCESSES` | `0`, `1` | Show all GPU processes (G+C). Default: `0` (Compute only) |
 
 ## 🔧 Requirements
 

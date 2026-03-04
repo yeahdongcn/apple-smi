@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 from apple_smi.formatter import format_json, format_table
 from apple_smi.memory import MemoryInfo
+from apple_smi.processes import ProcessInfo
 from apple_smi.sampler import Metrics
 from apple_smi.soc_info import SocInfo
 
@@ -151,3 +152,42 @@ class TestFormatJson:
         mem = data["memory"]
         assert mem["ram_total_mib"] == 18 * 1024
         assert mem["ram_used_mib"] == 9 * 1024
+
+    def test_json_processes(self):
+        soc = _make_soc()
+        metrics = _make_metrics()
+        metrics.processes = [
+            ProcessInfo(pid=1234, name="TestApp", type="G", memory_usage_bytes=100 * 1024 * 1024),
+        ]
+        output = format_json(metrics, soc)
+        data = json.loads(output)
+        assert "processes" in data
+        assert len(data["processes"]) == 1
+        assert data["processes"][0]["pid"] == 1234
+
+
+class TestProcessDisplay:
+    def test_processes_with_data(self):
+        soc = _make_soc()
+        metrics = _make_metrics()
+        metrics.processes = [
+            ProcessInfo(pid=636, name="WindowServer", type="G", memory_usage_bytes=120 * 1024 * 1024),
+            ProcessInfo(pid=1234, name="Chrome", type="G", memory_usage_bytes=250 * 1024 * 1024),
+        ]
+        output = format_table(metrics, soc)
+
+        assert "No running processes found" not in output
+        assert "636" in output
+        assert "WindowServer" in output
+        assert "1234" in output
+        assert "Chrome" in output
+        assert "250MiB" in output
+        assert "120MiB" in output
+
+    def test_no_processes(self):
+        soc = _make_soc()
+        metrics = _make_metrics()
+        metrics.processes = []
+        output = format_table(metrics, soc)
+
+        assert "No running processes found" in output
