@@ -4,25 +4,25 @@
 
 ```
 $ apple-smi
-Tue Mar  3 15:39:42 2026
+Wed Mar 04 10:15:39 2026
 +-----------------------------------------------------------------------------------------+
-| apple-smi 0.1.0                   macOS 15.3.1              Metal Support: Metal 3      |
+| APPLE-SMI 0.1.0              macOS Version: 26.3 (25D125)              Metal Version: 4 |
 +-----------------------------------------+------------------------+----------------------+
-| GPU  Name                   Chip        | Bus-Id          Disp.A | Volatile Uncorr. ECC |
-| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
-|                                         |                        |               MIG M. |
+| GPU  Name                               |                 Disp.A |                      |
+|      Temp                 Pwr:Usage/Cap |           Memory-Usage |             GPU-Util |
 |=========================================+========================+======================|
-|   0  Apple M3 Pro (14-Core GPU)     On  |   Apple Silicon     On |                  N/A |
-|  N/A  52C    P0             8W /   22W  |   9012MiB /  18432MiB  |     45%      Default |
-|                                         |                        |                  N/A |
+|   0  Apple M1 (8-Core GPU)              |                     On |                      |
+|       30C                   11.4W / 20W |    13864MiB / 16384MiB |                   5% |
 +-----------------------------------------+------------------------+----------------------+
 
 +-----------------------------------------------------------------------------------------+
 | Processes:                                                                              |
-|  GPU   GI   CI              PID   Type   Process name                        GPU Memory |
-|        ID   ID                                                               Usage      |
+| GPU     PID   Type   Process name                                            GPU Memory |
+|                                                                                   Usage |
 |=========================================================================================|
-|                                       No running processes found                        |
+|   0    72743     C      python3.11                                               530MiB |
+|   0    72807     C      python3.11                                               349MiB |
+|   0    72808     C      python3.11                                               349MiB |
 +-----------------------------------------------------------------------------------------+
 ```
 
