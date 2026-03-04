@@ -98,7 +98,7 @@ class Sampler:
         except Exception:
             self._smc_available = False
 
-    def get_metrics(self, duration_ms: int = 1000) -> Metrics:
+    def get_metrics(self, duration_ms: int = 100) -> Metrics:
         """Sample metrics over the given duration. Returns aggregated Metrics."""
         items = self._ior.get_sample(duration_ms)
         dt = duration_ms

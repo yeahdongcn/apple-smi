@@ -45,9 +45,9 @@ def main():
     parser.add_argument(
         "--interval",
         type=int,
-        default=1000,
+        default=100,
         metavar="MS",
-        help="Sampling interval in milliseconds (default: 1000)",
+        help="Sampling interval in milliseconds (default: 100)",
     )
     parser.add_argument(
         "--version",
