@@ -6,7 +6,7 @@
 $ apple-smi
 Wed Mar 04 14:52:00 2026
 +-----------------------------------------------------------------------------------------+
-| APPLE-SMI 0.1.2              macOS Version: 26.3 (25D125)              Metal Version: 3 |
+| APPLE-SMI 0.1.3              macOS Version: 26.3 (25D125)              Metal Version: 3 |
 +-----------------------------------------+------------------------+----------------------+
 | GPU  Name                               |                 Disp.A |                      |
 |      Temp                 Pwr:Usage/Cap |           Memory-Usage |             GPU-Util |
