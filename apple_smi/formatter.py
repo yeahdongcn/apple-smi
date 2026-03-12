@@ -44,11 +44,11 @@ def format_table(metrics: Metrics, soc: SocInfo) -> str:
         os_ver = "macOS Version: " + os_ver[6:]
     elif not os_ver.startswith("macOS Version:"):
         os_ver = f"macOS Version: {os_ver}"
-    
+
     # Shorten os_ver if it's too long
     if len(os_ver) > 35:
         os_ver = os_ver[:32] + ".."
-    
+
     metal = f"Metal Version: {soc.metal_family}"
 
     col1 = f" APPLE-SMI {__version__}"
@@ -138,21 +138,21 @@ def format_table(metrics: Metrics, soc: SocInfo) -> str:
     h_type = "Type".center(8)
     h_name = "Process name".ljust(54)
     h_mem = "GPU Memory ".rjust(11)
-    
+
     header = f"{h_gpu}{h_pid}{h_type}{h_name}{h_mem}"
     lines.append(f"|{header}|")
-    
+
     # Header row 2: right-aligned "Usage"
     lines.append(f"|{'Usage ':>{W}s}|")
     lines.append("|" + "=" * W + "|")
-    
+
     if not metrics.processes:
         lines.append(f"|{'No running processes found':^{W}s}|")
     else:
         # Sort and limit to top 15 with memory > 0
         display_procs = [p for p in metrics.processes if p.memory_usage_bytes > 0]
         display_procs = sorted(display_procs, key=lambda x: x.memory_usage_bytes, reverse=True)[:15]
-        
+
         if not display_procs:
             lines.append(f"|{'No running processes found':^{W}s}|")
         else:
@@ -160,17 +160,17 @@ def format_table(metrics: Metrics, soc: SocInfo) -> str:
                 gpu_idx = f"   0 ".ljust(6)
                 pid_str = str(proc.pid).rjust(10)
                 ptype = proc.type.center(8)
-                
+
                 name = proc.name
                 if len(name) > 54:
                     name = name[:51] + ".."
-                
+
                 mem = _format_mem(proc.memory_usage_bytes)
                 mem_str = f"{mem} ".rjust(11)
-                
+
                 line = f"{gpu_idx}{pid_str}{ptype}{name:<54s}{mem_str}"
                 lines.append(f"|{line}|")
-            
+
             if len(metrics.processes) > 15:
                 footer = f"... and {len(metrics.processes) - 15} more processes ..."
                 lines.append(f"|{footer:^{W}s}|")
@@ -193,10 +193,16 @@ def format_json(metrics: Metrics, soc: SocInfo) -> str:
             "temperature_c": round(metrics.gpu_temp_c, 1),
             "power_w": round(metrics.gpu_power_w, 2),
         },
+        "temperature": {
+            "cpu_temp_c": round(metrics.cpu_temp_c, 1),
+            "gpu_temp_c": round(metrics.gpu_temp_c, 1),
+        },
         "power": {
             "cpu_w": round(metrics.cpu_power_w, 2),
             "gpu_w": round(metrics.gpu_power_w, 2),
             "ane_w": round(metrics.ane_power_w, 2),
+            "dram_w": round(metrics.dram_power_w, 2),
+            "gpu_sram_w": round(metrics.gpu_sram_power_w, 2),
             "total_w": round(metrics.total_power_w, 2),
             "system_w": round(metrics.sys_power_w, 2),
         },

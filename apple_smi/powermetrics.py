@@ -84,8 +84,11 @@ class PowermetricsSampler:
         try:
             from .sensors import IOHIDSensors
             hid = IOHIDSensors()
-            m.gpu_temp_c = hid.get_gpu_temp()
+            cpu_temp, gpu_temp = hid.get_cpu_gpu_temps()
+            m.cpu_temp_c = cpu_temp
+            m.gpu_temp_c = gpu_temp
         except Exception:
+            m.cpu_temp_c = 0.0
             m.gpu_temp_c = 0.0
 
         return m

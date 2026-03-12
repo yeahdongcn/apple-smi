@@ -22,10 +22,13 @@ class Metrics:
     gpu_usage_pct: float = 0.0  # 0–100
     gpu_power_w: float = 0.0
     gpu_temp_c: float = 0.0
+    cpu_temp_c: float = 0.0
     cpu_power_w: float = 0.0
     ane_power_w: float = 0.0
-    total_power_w: float = 0.0
-    sys_power_w: float = 0.0
+    dram_power_w: float = 0.0
+    gpu_sram_power_w: float = 0.0
+    total_power_w: float = 0.0  # max(system_power, component_sum)
+    sys_power_w: float = 0.0    # residual = total - component_sum
     memory: MemoryInfo = field(default_factory=MemoryInfo)
     processes: list[ProcessInfo] = field(default_factory=list)
 
@@ -37,39 +40,39 @@ def _zero_div(a: float, b: float) -> float:
 def _calc_freq_usage(
     residencies: list[tuple[str, int]], freqs: list[int]
 ) -> tuple[int, float]:
-    """Calculate average frequency and utilization fraction from residency data.
+    """Calculate average frequency and active utilization from residency data.
 
-    Returns (avg_freq_mhz, usage_fraction_0_to_1).
+    Uses the same algorithm as mactop: GPU active % = activeTime / totalTime * 100,
+    and weighted average frequency across active states only.
+
+    Returns (avg_freq_mhz, active_percent_0_to_100).
     """
     if not residencies or not freqs:
         return 0, 0.0
 
-    # Find offset: skip IDLE/DOWN/OFF states
-    offset = 0
-    for i, (name, _) in enumerate(residencies):
+    total_time = 0
+    active_time = 0
+    weighted_freq = 0.0
+    active_state_idx = 0
+
+    for name, residency in residencies:
+        total_time += residency
         if name not in ("IDLE", "DOWN", "OFF"):
-            offset = i
-            break
+            active_time += residency
+            if active_state_idx < len(freqs):
+                weighted_freq += freqs[active_state_idx] * residency
+            active_state_idx += 1
 
-    total = sum(v for _, v in residencies)
-    active = sum(v for _, v in residencies[offset:])
-
-    if total == 0 or active == 0:
+    if total_time == 0:
         return 0, 0.0
 
-    # Calculate weighted average frequency
-    count = min(len(freqs), len(residencies) - offset)
-    avg_freq = 0.0
-    for i in range(count):
-        pct = _zero_div(float(residencies[i + offset][1]), float(active))
-        avg_freq += pct * freqs[i]
+    active_pct = (active_time / total_time) * 100.0
 
-    usage_ratio = _zero_div(float(active), float(total))
-    max_freq = freqs[-1] if freqs else 1
-    min_freq = freqs[0] if freqs else 0
-    from_max = (max(avg_freq, min_freq) * usage_ratio) / max_freq if max_freq > 0 else 0.0
+    avg_freq = 0
+    if active_time > 0 and len(freqs) > 0:
+        avg_freq = int(weighted_freq / active_time)
 
-    return int(avg_freq), from_max
+    return avg_freq, active_pct
 
 
 class Sampler:
@@ -112,8 +115,6 @@ class Sampler:
             if x.group == "GPU Stats" and x.subgroup == _GPU_FREQ_DICE_SUBG:
                 if x.channel == "GPUPH":
                     gpu_freqs = self.soc.gpu_freqs_mhz
-                    if len(gpu_freqs) > 1:
-                        gpu_freqs = gpu_freqs[1:]  # Skip first (lowest) state
                     freq, usage = _calc_freq_usage(x.residencies, gpu_freqs)
                     gpu_usages.append((freq, usage))
 
@@ -126,38 +127,65 @@ class Sampler:
                     m.cpu_power_w += compute_watts(x.simple_value, x.unit, dt)
                 elif ch.startswith("ANE"):
                     m.ane_power_w += compute_watts(x.simple_value, x.unit, dt)
+                elif ch.startswith("DRAM"):
+                    m.dram_power_w += compute_watts(x.simple_value, x.unit, dt)
+                elif ch.startswith("GPU SRAM"):
+                    m.gpu_sram_power_w += compute_watts(x.simple_value, x.unit, dt)
 
         # Aggregate GPU usage
         if gpu_usages:
             m.gpu_freq_mhz = int(
                 sum(f for f, _ in gpu_usages) / len(gpu_usages)
             )
+            # _calc_freq_usage now returns active_percent directly (0-100)
             m.gpu_usage_pct = (
-                sum(u for _, u in gpu_usages) / len(gpu_usages) * 100.0
+                sum(u for _, u in gpu_usages) / len(gpu_usages)
             )
 
-        m.total_power_w = m.cpu_power_w + m.gpu_power_w + m.ane_power_w
+        # Power calculation matching mactop:
+        # componentSum = CPU + GPU + ANE + DRAM + GPU_SRAM
+        # totalPower = max(systemPower, componentSum)
+        # systemResidual = totalPower - componentSum
+        component_sum = (
+            m.cpu_power_w + m.gpu_power_w + m.ane_power_w
+            + m.dram_power_w + m.gpu_sram_power_w
+        )
 
         # Temperature: try SMC first, fall back to HID sensors
+        cpu_temp = 0.0
         gpu_temp = 0.0
+        system_power = 0.0
+
         if self._smc_available and self._smc:
             try:
-                _, gpu_temp = get_smc_temperatures(self._smc)
+                cpu_temp, gpu_temp = get_smc_temperatures(self._smc)
             except Exception:
                 pass
             try:
-                m.sys_power_w = get_system_power(self._smc)
+                system_power = get_system_power(self._smc)
             except Exception:
                 pass
 
-        # If SMC didn't provide GPU temp, try HID sensors
-        if gpu_temp <= 0.0:
+        # HID fallback for temps SMC didn't provide (matching mactop)
+        if cpu_temp <= 0.0 or gpu_temp <= 0.0:
             try:
-                gpu_temp = self._hid.get_gpu_temp()
+                hid_cpu, hid_gpu = self._hid.get_cpu_gpu_temps()
+                if cpu_temp <= 0.0:
+                    cpu_temp = hid_cpu
+                if gpu_temp <= 0.0:
+                    gpu_temp = hid_gpu
             except Exception:
                 pass
 
+        m.cpu_temp_c = cpu_temp
         m.gpu_temp_c = gpu_temp
+
+        # Match mactop: total = max(system, components), sys = residual
+        total_power = system_power
+        if total_power < component_sum:
+            total_power = component_sum
+        m.total_power_w = total_power
+        m.sys_power_w = total_power - component_sum
 
         # Memory
         m.memory = get_memory_info()

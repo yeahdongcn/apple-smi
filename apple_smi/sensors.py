@@ -116,46 +116,30 @@ class IOHIDSensors:
         items.sort(key=lambda x: x[0])
         return items
 
-    def get_gpu_temp(self) -> float:
-        """Get average GPU temperature in Celsius.
-        
-        Falls back to SOC sensors if specific GPU sensors are missing or reporting low.
+    def get_cpu_gpu_temps(self) -> tuple[float, float]:
+        """Get (cpu_temp_avg, gpu_temp_avg) from HID sensors.
+
+        Matches mactop's readSocTemperature HID fallback logic:
+        - CPU: sensors containing "PMU tdie", "pACC", or "eACC"
+        - GPU: sensors containing "GPU"
         """
         temps = self.get_temperatures()
-        
-        # Primary: sensors with "GPU" in name
-        gpu_temps = [t for name, t in temps if "GPU" in name.upper() and t > 0]
-        
-        # Secondary: sensors with "SOC" in name (often better die temps)
-        soc_temps = [t for name, t in temps if "SOC" in name.upper() and t > 0]
-        
-        # Use GPU sensors if they seem realistic (> 1), otherwise SOC
-        if gpu_temps and max(gpu_temps) > 5.0:
-            return sum(gpu_temps) / len(gpu_temps)
-        if soc_temps:
-            return sum(soc_temps) / len(soc_temps)
-            
-        return sum(gpu_temps) / len(gpu_temps) if gpu_temps else 0.0
 
-    def get_cpu_temp(self) -> float:
-        """Get average CPU temperature in Celsius."""
-        temps = self.get_temperatures()
-        cpu_patterns = ["PACC", "EACC", "CPU", "CORE", "CLUSTER"]
-        cpu_temps = []
-        
+        cpu_temps: list[float] = []
+        gpu_temps: list[float] = []
+
         for name, t in temps:
-            name_u = name.upper()
-            if any(p in name_u for p in cpu_patterns) and t > 0:
+            if t <= 0 or t >= 150:
+                continue
+            # Match mactop's exact HID sensor name patterns
+            if ("PMU tdie" in name or "pACC" in name or "eACC" in name):
                 cpu_temps.append(t)
-                
-        if not cpu_temps:
-            # Fallback to SOC
-            soc_temps = [t for name, t in temps if "SOC" in name.upper() and t > 0]
-            if soc_temps:
-                return sum(soc_temps) / len(soc_temps)
-            return 0.0
-            
-        return sum(cpu_temps) / len(cpu_temps)
+            elif "GPU" in name:
+                gpu_temps.append(t)
+
+        cpu_avg = sum(cpu_temps) / len(cpu_temps) if cpu_temps else 0.0
+        gpu_avg = sum(gpu_temps) / len(gpu_temps) if gpu_temps else 0.0
+        return cpu_avg, gpu_avg
 
     def __del__(self):
         if hasattr(self, "_matching") and self._matching:
@@ -333,45 +317,91 @@ class SMC:
 
 _FLOAT_TYPE = _fourcc("flt ")
 
-# Known SMC temperature key patterns (avoids enumerating all keys which is slow)
-_CPU_TEMP_KEYS = [f"Tp{i:02d}" for i in range(15)] + [f"Te{i:02d}" for i in range(15)] + [f"TC{i:x}" for i in range(16)]
-_GPU_TEMP_KEYS = [f"Tg{i:02d}" for i in range(10)] + [
-    f"Tg{c}{d}" for c in "0123" for d in "abcdef0123456789"
-]
+# Cache for dynamically discovered SMC temperature keys
+_smc_cpu_keys: list[str] | None = None
+_smc_gpu_keys: list[str] | None = None
 
 
-def _read_smc_temp(smc: SMC, key: str) -> float | None:
-    """Try to read a float temperature value from an SMC key. Returns None on failure."""
+def _discover_smc_temp_keys(smc: SMC) -> tuple[list[str], list[str]]:
+    """Enumerate all SMC keys to find temperature sensors (like mactop).
+
+    Filters for 'flt ' type keys:
+    - CPU: keys starting with 'Tp' (perf cores) or 'Te' (efficiency cores)
+    - GPU: keys starting with 'Tg'
+
+    Done once and cached for subsequent calls.
+    """
+    global _smc_cpu_keys, _smc_gpu_keys
+    if _smc_cpu_keys is not None and _smc_gpu_keys is not None:
+        return _smc_cpu_keys, _smc_gpu_keys
+
+    cpu_keys: list[str] = []
+    gpu_keys: list[str] = []
+
     try:
-        ki = smc.read_key_info(key)
-        if ki.data_size != 4 or ki.data_type != _FLOAT_TYPE:
-            return None
-        val = smc.read_float(key)
-        return val if val > 0.0 and val < 150.0 else None  # sanity check
+        _, data = smc.read_val("#KEY")
+        count = struct.unpack(">I", data[:4])[0]
     except Exception:
-        return None
+        _smc_cpu_keys = cpu_keys
+        _smc_gpu_keys = gpu_keys
+        return cpu_keys, gpu_keys
+
+    for i in range(count):
+        try:
+            key = smc.key_by_index(i)
+        except Exception:
+            continue
+
+        if len(key) != 4 or key[0] != "T":
+            continue
+
+        try:
+            ki = smc.read_key_info(key)
+            if ki.data_type != _FLOAT_TYPE:
+                continue
+        except Exception:
+            continue
+
+        # CPU: Tp* (perf cores), Te* (efficiency cores)
+        if key[1] in ("p", "e"):
+            cpu_keys.append(key)
+        # GPU: Tg*
+        elif key[1] == "g":
+            gpu_keys.append(key)
+
+    _smc_cpu_keys = cpu_keys
+    _smc_gpu_keys = gpu_keys
+    return cpu_keys, gpu_keys
 
 
 def get_smc_temperatures(smc: SMC) -> tuple[float, float]:
     """Get (cpu_temp_avg, gpu_temp_avg) from SMC sensors.
 
-    Probes known temperature key patterns directly instead of enumerating
-    all SMC keys (which is very slow).
+    Dynamically discovers temperature keys on first call (like mactop),
+    then caches them for subsequent reads.
     CPU: keys 'Tp*' (perf cores) and 'Te*' (efficiency cores).
     GPU: keys 'Tg*'.
     """
+    cpu_keys, gpu_keys = _discover_smc_temp_keys(smc)
+
     cpu_temps: list[float] = []
     gpu_temps: list[float] = []
 
-    for key in _CPU_TEMP_KEYS:
-        val = _read_smc_temp(smc, key)
-        if val is not None:
-            cpu_temps.append(val)
+    for key in cpu_keys:
+        try:
+            val = smc.read_float(key)
+            if 0.0 < val < 150.0:
+                cpu_temps.append(val)
+        except Exception:
+            continue
 
-    for key in _GPU_TEMP_KEYS:
-        val = _read_smc_temp(smc, key)
-        if val is not None:
-            gpu_temps.append(val)
+    for key in gpu_keys:
+        try:
+            val = smc.read_float(key)
+            if 0.0 < val < 150.0:
+                gpu_temps.append(val)
+        except Exception:
+            continue
 
     cpu_avg = sum(cpu_temps) / len(cpu_temps) if cpu_temps else 0.0
     gpu_avg = sum(gpu_temps) / len(gpu_temps) if gpu_temps else 0.0

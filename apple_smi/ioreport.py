@@ -148,7 +148,10 @@ class IOReportChannelItem:
 
 
 def compute_watts(simple_value: int, unit: str, duration_ms: int) -> float:
-    """Convert IOReport energy value to Watts given the unit and sample duration."""
+    """Convert IOReport energy value to Watts given the unit and sample duration.
+
+    Matches mactop's energyToWatts: defaults to µJ if unit is unknown/empty.
+    """
     if simple_value < 0:
         return 0.0  # Invalid / not applicable
     val_per_sec = simple_value / (duration_ms / 1000.0)
@@ -160,7 +163,8 @@ def compute_watts(simple_value: int, unit: str, duration_ms: int) -> float:
         case "nJ":
             return val_per_sec / 1e9
         case _:
-            return 0.0
+            # Default to µJ like mactop does for unknown/empty units
+            return val_per_sec / 1e6
 
 
 # ── IOReportSampler ───────────────────────────────────────────────────────────

@@ -124,16 +124,10 @@ def get_memory_info() -> MemoryInfo:
     )
     if ret == 0:
         page_size = _libc.sysconf(_SC_PAGESIZE)
-        used_pages = (
-            stats.active_count
-            + stats.inactive_count
-            + stats.wire_count
-            + stats.speculative_count
-            + stats.compressor_page_count
-            - stats.purgeable_count
-            - stats.external_page_count
-        )
-        info.ram_used = used_pages * page_size
+        # Match mactop's formula: used = total - (free + inactive)
+        free = stats.free_count * page_size
+        inactive = stats.inactive_count * page_size
+        info.ram_used = info.ram_total - free - inactive
 
     # ── Swap usage ────────────────────────────────────────────────────────
     name = (c_int * 2)(CTL_VM, VM_SWAPUSAGE)

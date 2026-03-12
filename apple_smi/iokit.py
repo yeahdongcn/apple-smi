@@ -146,24 +146,67 @@ def _parse_dvfs_pairs(data: bytes) -> tuple[list[int], list[int]]:
 
 
 def get_gpu_freq_table() -> list[int]:
-    """Read GPU frequency table from IORegistry (AppleARMIODevice/pmgr).
+    """Read GPU frequency table from IORegistry (AppleARMIODevice).
 
-    Returns list of frequencies in MHz.
+    Matches mactop's loadGpuFrequencies strategy:
+    1. Search both 'pmgr' and 'clpc' devices
+    2. Try 'voltage-states9-sram' or 'voltage-states9' first
+    3. Fall back to any 'voltage-states*' key with valid GPU-range freqs
+
+    Returns list of non-zero frequencies in MHz.
     """
+    import struct
+
     try:
         for entry, name in IOServiceIterator("AppleARMIODevice"):
-            if name == "pmgr":
-                props = get_entry_properties(entry)
-                data_ref = cfdict_get_val(props, "voltage-states9")
+            if name not in ("pmgr", "clpc"):
+                IOKit.IOObjectRelease(entry)
+                continue
+
+            props = get_entry_properties(entry)
+
+            # Strategy 1: Try preferred keys directly
+            best_raw = None
+            for key_name in ("voltage-states9-sram", "voltage-states9"):
+                data_ref = cfdict_get_val(props, key_name)
                 if data_ref:
-                    raw = cfdata_get_bytes(data_ref)
-                    _, freqs = _parse_dvfs_pairs(raw)
-                    # Convert Hz to MHz (frequency values are in Hz at 1M scale)
-                    freq_mhz = [f // (1000 * 1000) for f in freqs]
-                    cfrelease(props)
-                    IOKit.IOObjectRelease(entry)
-                    return freq_mhz
+                    best_raw = cfdata_get_bytes(data_ref)
+                    break
+
+            # Strategy 2: Fall back to any voltage-states* with valid freqs
+            if best_raw is None:
+                count = CF.CFDictionaryGetCount(props)
+                if count > 0:
+                    keys_arr = (c_void_p * count)()
+                    vals_arr = (c_void_p * count)()
+                    CF.CFDictionaryGetKeysAndValues(props, keys_arr, vals_arr)
+
+                    best_max_freq = 0xFFFFFFFF
+                    for i in range(count):
+                        key_str = from_cfstr(keys_arr[i])
+                        if not key_str.startswith("voltage-states"):
+                            continue
+                        raw = cfdata_get_bytes(vals_arr[i])
+                        n_entries = len(raw) // 8
+                        current_max = 0
+                        valid_count = 0
+                        for j in range(n_entries):
+                            freq = struct.unpack_from("<I", raw, j * 8)[0]
+                            if freq > 100_000_000:  # > 100 MHz in Hz
+                                valid_count += 1
+                                current_max = max(current_max, freq)
+                        if valid_count > 0 and current_max < best_max_freq:
+                            best_max_freq = current_max
+                            best_raw = raw
+
+            if best_raw is not None:
+                _, freqs = _parse_dvfs_pairs(best_raw)
+                freq_mhz = [f // 1_000_000 for f in freqs if f // 1_000_000 > 0]
                 cfrelease(props)
+                IOKit.IOObjectRelease(entry)
+                return freq_mhz
+
+            cfrelease(props)
             IOKit.IOObjectRelease(entry)
     except RuntimeError:
         pass
