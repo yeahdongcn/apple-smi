@@ -29,6 +29,7 @@ class Metrics:
     gpu_sram_power_w: float = 0.0
     total_power_w: float = 0.0  # max(system_power, component_sum)
     sys_power_w: float = 0.0    # residual = total - component_sum
+    max_power_w: float = 0.0    # runtime peak (like mactop's maxPowerSeen)
     memory: MemoryInfo = field(default_factory=MemoryInfo)
     processes: list[ProcessInfo] = field(default_factory=list)
 
@@ -80,6 +81,7 @@ class Sampler:
 
     def __init__(self):
         self.soc = get_soc_info()
+        self._max_power_seen = 0.1  # Runtime peak tracker (like mactop)
 
         # IOReport channels
         channels = [
@@ -186,6 +188,11 @@ class Sampler:
             total_power = component_sum
         m.total_power_w = total_power
         m.sys_power_w = total_power - component_sum
+
+        # Update runtime peak tracker (like mactop's maxPowerSeen)
+        if total_power > self._max_power_seen:
+            self._max_power_seen = total_power * 1.1
+        m.max_power_w = self._max_power_seen
 
         # Memory
         m.memory = get_memory_info()

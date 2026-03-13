@@ -86,8 +86,8 @@ def format_table(metrics: Metrics, soc: SocInfo) -> str:
     h1c3 = " " * C3
     lines.append(f"|{h1c1}|{h1c2}|{h1c3}|")
 
-    # Header row 2: Temp  Pwr:Usage/Cap  |  Memory-Usage  |  GPU-Util
-    h2c1 = f"{'':>{TEMP_PAD}s}{'Temp':>{TEMP_W}s}{'Pwr:Usage/Cap':>{PWR_W}s} "
+    # Header row 2: Temp  Pwr:Usage/Max  |  Memory-Usage  |  GPU-Util
+    h2c1 = f"{'':>{TEMP_PAD}s}{'Temp':>{TEMP_W}s}{'Pwr:Usage/Max':>{PWR_W}s} "
     h2c2 = f" {'Memory-Usage':>{C2 - 2}s} "
     h2c3 = f" {'GPU-Util':>{C3 - 2}s} "
     lines.append(f"|{h2c1}|{h2c2}|{h2c3}|")
@@ -110,9 +110,9 @@ def format_table(metrics: Metrics, soc: SocInfo) -> str:
 
     # Data row 2: temp  pwr  |  memory  |  gpu-util
     temp_str = f"{int(metrics.gpu_temp_c)}C" if metrics.gpu_temp_c > 0 else "N/A"
-    # Usage = total SoC power (CPU+GPU+ANE), Cap = chip TDP
+    # Usage = total power, Cap = runtime peak (like mactop's maxPowerSeen)
     usage_pwr = f"{metrics.total_power_w:.1f}W"
-    cap_pwr = f"{soc.tdp_w:.0f}W" if soc.tdp_w > 0 else "N/A"
+    cap_pwr = f"{metrics.max_power_w:.0f}W"
     pwr_str = f"{usage_pwr} / {cap_pwr}"
     d2c1 = f"{'':>{TEMP_PAD}s}{temp_str:>{TEMP_W}s}{pwr_str:>{PWR_W}s} "
 
@@ -205,6 +205,7 @@ def format_json(metrics: Metrics, soc: SocInfo) -> str:
             "gpu_sram_w": round(metrics.gpu_sram_power_w, 2),
             "total_w": round(metrics.total_power_w, 2),
             "system_w": round(metrics.sys_power_w, 2),
+            "max_w": round(metrics.max_power_w, 2),
         },
         "memory": {
             "ram_used_bytes": metrics.memory.ram_used,

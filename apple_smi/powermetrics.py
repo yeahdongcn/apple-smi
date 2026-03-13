@@ -14,6 +14,7 @@ class PowermetricsSampler:
 
     def __init__(self):
         self.soc = get_soc_info()
+        self._max_power_seen = 0.1  # Runtime peak tracker (like mactop)
 
     def get_metrics(self, duration_ms: int = 1000) -> Metrics:
         """Run powermetrics and parse the output into Metrics."""
@@ -76,6 +77,11 @@ class PowermetricsSampler:
             m.total_power_w = float(pkg_power_match.group(1)) / 1000.0
         else:
             m.total_power_w = m.cpu_power_w + m.gpu_power_w + m.ane_power_w
+
+        # Update runtime peak tracker
+        if m.total_power_w > self._max_power_seen:
+            self._max_power_seen = m.total_power_w * 1.1
+        m.max_power_w = self._max_power_seen
 
         # Memory (always available without sudo)
         m.memory = get_memory_info()
