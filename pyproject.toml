@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "apple-smi"
-version = "0.1.3"
+version = "0.1.4"
 description = "nvidia-smi equivalent for macOS Apple Silicon – Monitor Metal GPU usage, power, and temperature"
 readme = "README.md"
 license = {text = "MIT"}
